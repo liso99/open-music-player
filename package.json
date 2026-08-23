@@ -1,0 +1,39 @@
+{
+  "name": "open-music-player",
+  "version": "0.1.0",
+  "private": true,
+  "description": "一个可在 iPhone 上使用的开源音乐播放器 PWA，兼容 MusicFree 插件协议。",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"node server/index.js\" \"vite --host 0.0.0.0\"",
+    "dev:api": "node server/index.js",
+    "dev:web": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "preview": "vite preview --host 0.0.0.0",
+    "cap:add:ios": "cap add ios",
+    "cap:sync": "npm run build && cap sync",
+    "cap:open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0",
+    "crypto-js": "^4.2.0",
+    "dayjs": "^1.11.13",
+    "express": "^4.21.2",
+    "he": "^1.2.0",
+    "lucide-react": "^0.468.0",
+    "qs": "^6.13.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "webdav": "^5.7.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "vite": "^6.0.7"
+  }
+}

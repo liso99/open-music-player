@@ -1,0 +1,13 @@
+{
+  "appId": "com.openmusic.player",
+  "appName": "拾音",
+  "webDir": "dist",
+  "backgroundColor": "#101014",
+  "ios": {
+    "contentInset": "always",
+    "preferredContentMode": "mobile"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
