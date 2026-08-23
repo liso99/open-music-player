@@ -4,4 +4,7 @@ data/
 plugins/*.js
 !plugins/.gitkeep
 shot-*.png
+release/
+workflow-logs*/
+workflow-logs.zip
 .DS_Store
