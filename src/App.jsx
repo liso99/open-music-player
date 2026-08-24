@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Compass,
   Copy,
+  Download,
   Heart,
   Link2,
   ListMusic,
@@ -42,6 +43,7 @@ import {
   searchItunes,
 } from './api.js';
 import { getApiBase, setApiBase } from './config.js';
+import { deleteDownload, listDownloads, saveDownload } from './downloadStore.js';
 import './styles.css';
 
 const ITUNES_ID = 'itunes';
@@ -125,6 +127,8 @@ export default function App() {
   const [discoverError, setDiscoverError] = useState('');
 
   const [favorites, setFavorites] = useState(readFavorites);
+  const [downloads, setDownloads] = useState([]);
+  const [downloading, setDownloading] = useState({});
 
   const [queue, setQueue] = useState([]);
   const [queueIndex, setQueueIndex] = useState(-1);
@@ -168,6 +172,16 @@ export default function App() {
   }, [favorites]);
 
   useEffect(() => {
+    listDownloads().then((items) => {
+      setDownloads(items.map((item) => ({
+        ...item.track,
+        url: URL.createObjectURL(item.blob),
+        sourceType: 'downloaded',
+      })));
+    }).catch(() => setDownloads([]));
+  }, []);
+
+  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = volume;
@@ -191,6 +205,45 @@ export default function App() {
       if (exists) return prev.filter((item) => trackKey(item) !== trackKey(track));
       return [...prev, { ...track, favorite: true }];
     });
+  }
+
+  function isDownloaded(track) {
+    return downloads.some((item) => trackKey(item) === trackKey(track));
+  }
+
+  async function downloadTrack(track) {
+    const key = trackKey(track);
+    if (downloading[key] || isDownloaded(track)) return;
+    setDownloading((prev) => ({ ...prev, [key]: true }));
+    try {
+      let src = '';
+      if (track.sourceType === 'itunes') {
+        src = track.previewUrl;
+      } else {
+        const resolved = await resolveMedia(track.plugin, track.item, 'standard');
+        src = resolved.streamUrl;
+      }
+      if (!src) throw new Error('没有可下载的地址');
+      const response = await fetch(src);
+      if (!response.ok) throw new Error('下载请求失败');
+      const blob = await response.blob();
+      const storedTrack = { ...track, sourceType: 'downloaded' };
+      await saveDownload(key, storedTrack, blob);
+      setDownloads((prev) => [
+        { ...storedTrack, url: URL.createObjectURL(blob) },
+        ...prev.filter((item) => trackKey(item) !== key),
+      ]);
+    } catch (error) {
+      setPlayError(error.message);
+    } finally {
+      setDownloading((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function removeDownload(track) {
+    const key = trackKey(track);
+    await deleteDownload(key);
+    setDownloads((prev) => prev.filter((item) => trackKey(item) !== key));
   }
 
   async function performSearch(page = 1, append = false) {
@@ -268,7 +321,10 @@ export default function App() {
     setDuration(track.duration || 0);
     try {
       let src = '';
-      if (track.sourceType === 'itunes') {
+      const downloaded = downloads.find((item) => trackKey(item) === trackKey(track));
+      if (track.sourceType === 'downloaded' || downloaded) {
+        src = track.url || downloaded?.url || '';
+      } else if (track.sourceType === 'itunes') {
         src = track.previewUrl;
       } else {
         const resolved = await resolveMedia(track.plugin, track.item, 'standard');
@@ -399,6 +455,9 @@ export default function App() {
             current={current}
             isFavorite={isFavorite}
             toggleFavorite={toggleFavorite}
+            isDownloaded={isDownloaded}
+            downloading={downloading}
+            onDownload={downloadTrack}
             onSearch={() => performSearch(1)}
             onLoadMore={loadMore}
             onPlay={(track, index) => playList(results, index)}
@@ -416,6 +475,9 @@ export default function App() {
             current={current}
             isFavorite={isFavorite}
             toggleFavorite={toggleFavorite}
+            isDownloaded={isDownloaded}
+            downloading={downloading}
+            onDownload={downloadTrack}
             onOpenTopList={openTopList}
             onBack={() => setTopListTracks(null)}
             onPlay={(track, index) => playList(topListTracks, index)}
@@ -428,7 +490,20 @@ export default function App() {
             current={current}
             isFavorite={isFavorite}
             toggleFavorite={toggleFavorite}
+            isDownloaded={isDownloaded}
+            downloading={downloading}
+            onDownload={downloadTrack}
             onPlay={(track, index) => playList(favorites, index)}
+          />
+        )}
+
+        {tab === 'downloads' && (
+          <DownloadsView
+            downloads={downloads}
+            current={current}
+            isDownloaded={isDownloaded}
+            onRemove={removeDownload}
+            onPlay={(track, index) => playList(downloads, index)}
           />
         )}
 
@@ -455,6 +530,7 @@ export default function App() {
         <TabButton active={tab === 'search'} icon={<Search size={20} />} label="搜索" onClick={() => setTab('search')} />
         <TabButton active={tab === 'discover'} icon={<Compass size={20} />} label="发现" onClick={() => setTab('discover')} />
         <TabButton active={tab === 'favorites'} icon={<Heart size={20} />} label="收藏" onClick={() => setTab('favorites')} />
+        <TabButton active={tab === 'downloads'} icon={<Download size={20} />} label="下载" onClick={() => setTab('downloads')} />
         <TabButton active={tab === 'settings'} icon={<Settings size={20} />} label="设置" onClick={() => setTab('settings')} />
       </nav>
 
@@ -483,6 +559,8 @@ export default function App() {
           shuffle={shuffle}
           repeat={repeat}
           favorite={currentFavorite}
+          downloaded={current ? isDownloaded(current) : false}
+          downloading={current ? downloading[trackKey(current)] : false}
           error={playError}
           onClose={() => setPlayerOpen(false)}
           onToggle={togglePlay}
@@ -494,6 +572,7 @@ export default function App() {
           onShuffle={() => setShuffle(!shuffle)}
           onRepeat={cycleRepeat}
           onFavorite={() => current && toggleFavorite(current)}
+          onDownload={() => current && downloadTrack(current)}
           onPlayIndex={playCurrent}
           isFavorite={isFavorite}
         />
@@ -559,6 +638,9 @@ function SearchView(props) {
     current,
     isFavorite,
     toggleFavorite,
+    isDownloaded,
+    downloading,
+    onDownload,
     onSearch,
     onLoadMore,
     onPlay,
@@ -608,6 +690,9 @@ function SearchView(props) {
             current={current}
             isFavorite={isFavorite}
             onFavorite={toggleFavorite}
+            isDownloaded={isDownloaded}
+            downloading={downloading}
+            onDownload={onDownload}
             onPlay={onPlay}
           />
           {!searchEnd && (
@@ -632,6 +717,9 @@ function DiscoverView(props) {
     current,
     isFavorite,
     toggleFavorite,
+    isDownloaded,
+    downloading,
+    onDownload,
     onOpenTopList,
     onBack,
     onPlay,
@@ -649,6 +737,9 @@ function DiscoverView(props) {
           current={current}
           isFavorite={isFavorite}
           onFavorite={toggleFavorite}
+          isDownloaded={isDownloaded}
+          downloading={downloading}
+          onDownload={onDownload}
           onPlay={onPlay}
         />
       </section>
@@ -700,7 +791,16 @@ function DiscoverView(props) {
 }
 
 function FavoritesView(props) {
-  const { favorites, current, isFavorite, toggleFavorite, onPlay } = props;
+  const {
+    favorites,
+    current,
+    isFavorite,
+    toggleFavorite,
+    isDownloaded,
+    downloading,
+    onDownload,
+    onPlay,
+  } = props;
   return (
     <section className="view">
       <div className="section-head">
@@ -715,8 +815,55 @@ function FavoritesView(props) {
           current={current}
           isFavorite={isFavorite}
           onFavorite={toggleFavorite}
+          isDownloaded={isDownloaded}
+          downloading={downloading}
+          onDownload={onDownload}
           onPlay={onPlay}
         />
+      )}
+    </section>
+  );
+}
+
+function DownloadsView({ downloads, current, isDownloaded, onRemove, onPlay }) {
+  return (
+    <section className="view">
+      <div className="section-head">
+        <h1>下载</h1>
+        {downloads.length > 0 && <span className="count">{downloads.length} 首</span>}
+      </div>
+      {downloads.length === 0 ? (
+        <Empty icon={<Download size={24} />} title="还没有下载" text="在歌曲列表点下载按钮即可保存到本机" />
+      ) : (
+        <div className="download-list">
+          {downloads.map((track, index) => (
+            <div
+              className={`track-row ${current && trackKey(current) === trackKey(track) ? 'active' : ''}`}
+              key={`${trackKey(track)}-${index}`}
+              onClick={() => onPlay(track, index)}
+            >
+              <div className="track-index">
+                {current && trackKey(current) === trackKey(track) ? <Music size={16} className="equalizer" /> : index + 1}
+              </div>
+              <div className="track-art">
+                {track.artwork ? <img src={track.artwork} alt="" /> : <span><Music size={18} /></span>}
+              </div>
+              <div className="track-main">
+                <div className="track-title">{track.title}</div>
+                <div className="track-sub">{track.artist}{track.album ? ` · ${track.album}` : ''}</div>
+              </div>
+              <button
+                className="icon-button danger"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRemove(track);
+                }}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -893,7 +1040,16 @@ function SettingsView({ plugins, subscriptions, onRefresh }) {
   );
 }
 
-function TrackList({ tracks, current, isFavorite, onFavorite, onPlay }) {
+function TrackList({
+  tracks,
+  current,
+  isFavorite,
+  onFavorite,
+  isDownloaded,
+  downloading,
+  onDownload,
+  onPlay,
+}) {
   return (
     <div className="track-list">
       {tracks.map((track, index) => {
@@ -917,6 +1073,22 @@ function TrackList({ tracks, current, isFavorite, onFavorite, onPlay }) {
             <div className="track-meta">
               {track.duration ? formatTime(track.duration) : ''}
             </div>
+            <button
+              className={`download-button ${isDownloaded(track) ? 'downloaded' : ''}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDownload(track);
+              }}
+              title={isDownloaded(track) ? '已下载' : '下载'}
+            >
+              {downloading[trackKey(track)] ? (
+                <Loader2 className="spin" size={16} />
+              ) : isDownloaded(track) ? (
+                <Check size={16} />
+              ) : (
+                <Download size={16} />
+              )}
+            </button>
             <button
               className={`favorite-button ${isFavorite(track) ? 'active' : ''}`}
               onClick={(event) => {
@@ -964,6 +1136,8 @@ function PlayerOverlay(props) {
     shuffle,
     repeat,
     favorite,
+    downloaded,
+    downloading,
     error,
     onClose,
     onToggle,
@@ -975,6 +1149,7 @@ function PlayerOverlay(props) {
     onShuffle,
     onRepeat,
     onFavorite,
+    onDownload,
     onPlayIndex,
     isFavorite,
   } = props;
@@ -986,7 +1161,12 @@ function PlayerOverlay(props) {
       <div className="player-top">
         <button className="icon-button" onClick={onClose}><ChevronDown size={22} /></button>
         <div className="player-context"><span>正在播放</span><strong>{queueIndex + 1}/{queue.length}</strong></div>
-        <button className="icon-button" onClick={onFavorite}><Heart size={20} fill={favorite ? 'currentColor' : 'none'} /></button>
+        <div className="player-actions">
+          <button className="icon-button" onClick={onDownload} title={downloaded ? '已下载' : '下载'}>
+            {downloading ? <Loader2 className="spin" size={18} /> : downloaded ? <Check size={18} /> : <Download size={18} />}
+          </button>
+          <button className="icon-button" onClick={onFavorite}><Heart size={20} fill={favorite ? 'currentColor' : 'none'} /></button>
+        </div>
       </div>
 
       <div className="player-artwork">

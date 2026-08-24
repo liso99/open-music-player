@@ -7,4 +7,5 @@ shot-*.png
 release/
 workflow-logs*/
 workflow-logs.zip
+public/OpenMusic.ipa
 .DS_Store
