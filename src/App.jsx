@@ -21,6 +21,7 @@ import {
   Plus,
   Repeat,
   Repeat1,
+  Save,
   Search,
   Settings,
   Shuffle,
@@ -244,6 +245,40 @@ export default function App() {
     const key = trackKey(track);
     await deleteDownload(key);
     setDownloads((prev) => prev.filter((item) => trackKey(item) !== key));
+  }
+
+  function extensionFor(type) {
+    if (type.includes('mpeg')) return 'mp3';
+    if (type.includes('mp4') || type.includes('m4a')) return 'm4a';
+    if (type.includes('aac')) return 'aac';
+    if (type.includes('flac')) return 'flac';
+    if (type.includes('ogg')) return 'ogg';
+    if (type.includes('wav')) return 'wav';
+    return 'mp3';
+  }
+
+  async function exportToFiles(track) {
+    try {
+      const response = await fetch(track.url);
+      const blob = await response.blob();
+      const type = blob.type || 'audio/mpeg';
+      const filename = `${track.title} - ${track.artist}.${extensionFor(type)}`;
+      const file = new File([blob], filename, { type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: track.title });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setPlayError(error.message);
+    }
   }
 
   async function performSearch(page = 1, append = false) {
@@ -503,6 +538,7 @@ export default function App() {
             current={current}
             isDownloaded={isDownloaded}
             onRemove={removeDownload}
+            onExport={exportToFiles}
             onPlay={(track, index) => playList(downloads, index)}
           />
         )}
@@ -825,7 +861,7 @@ function FavoritesView(props) {
   );
 }
 
-function DownloadsView({ downloads, current, isDownloaded, onRemove, onPlay }) {
+function DownloadsView({ downloads, current, isDownloaded, onRemove, onExport, onPlay }) {
   return (
     <section className="view">
       <div className="section-head">
@@ -838,7 +874,7 @@ function DownloadsView({ downloads, current, isDownloaded, onRemove, onPlay }) {
         <div className="download-list">
           {downloads.map((track, index) => (
             <div
-              className={`track-row ${current && trackKey(current) === trackKey(track) ? 'active' : ''}`}
+              className={`download-row ${current && trackKey(current) === trackKey(track) ? 'active' : ''}`}
               key={`${trackKey(track)}-${index}`}
               onClick={() => onPlay(track, index)}
             >
@@ -852,6 +888,16 @@ function DownloadsView({ downloads, current, isDownloaded, onRemove, onPlay }) {
                 <div className="track-title">{track.title}</div>
                 <div className="track-sub">{track.artist}{track.album ? ` · ${track.album}` : ''}</div>
               </div>
+              <button
+                className="download-export"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExport(track);
+                }}
+              >
+                <Save size={16} />
+                <span>保存到文件</span>
+              </button>
               <button
                 className="icon-button danger"
                 onClick={(event) => {

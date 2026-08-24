@@ -316,8 +316,20 @@ img {
   border-radius: var(--radius);
 }
 
+.download-row {
+  display: grid;
+  grid-template-columns: 28px 48px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  padding: 7px 6px;
+  border-radius: var(--radius);
+}
+
 .track-row:hover,
-.track-row.active {
+.track-row.active,
+.download-row:hover,
+.download-row.active {
   background: rgba(255, 255, 255, 0.045);
 }
 
@@ -406,6 +418,19 @@ img {
 
 .download-button.downloaded {
   color: var(--teal);
+}
+
+.download-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .load-more {
@@ -1065,6 +1090,15 @@ input[type="range"]::-webkit-slider-thumb {
   .track-row {
     grid-template-columns: 24px 42px minmax(0, 1fr) 30px 30px;
     gap: 8px;
+  }
+
+  .download-row {
+    grid-template-columns: 24px 42px minmax(0, 1fr) auto auto;
+    gap: 7px;
+  }
+
+  .download-export span {
+    display: none;
   }
 
   .track-art {
